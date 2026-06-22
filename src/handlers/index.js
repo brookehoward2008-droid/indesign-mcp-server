@@ -22,6 +22,7 @@ export { GroupHandlers } from './groupHandlers.js';
 // Multi-Document and Production
 export { BookHandlers } from './bookHandlers.js';
 export { ExportHandlers } from './exportHandlers.js';
+export { ProductionHandlers } from './productionHandlers.js';
 
 // System and Utility
 export { UtilityHandlers } from './utilityHandlers.js';

@@ -15,6 +15,7 @@ import {
     MasterSpreadHandlers,
     PageHandlers,
     PageItemHandlers,
+    ProductionHandlers,
     StyleHandlers,
     TextHandlers,
     UtilityHandlers
@@ -220,6 +221,11 @@ export class InDesignMCPServer {
             case 'view_document': return await UtilityHandlers.viewDocument();
             case 'get_session_info': return await UtilityHandlers.getSessionInfo();
             case 'clear_session': return await UtilityHandlers.clearSession();
+
+            // Production Tools (Windows COM)
+            case 'build_handoff': return await ProductionHandlers.buildHandoff(args);
+            case 'get_production_status': return await ProductionHandlers.getProductionStatus(args);
+            case 'list_handoff_packages': return await ProductionHandlers.listHandoffPackages(args);
 
             // Help System
             case 'help': return await HelpHandlers.getHelp(args);

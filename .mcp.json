@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "indesign": {
+      "command": "node",
+      "args": ["src/index.js"],
+      "env": {}
+    },
+    "indesign-python": {
+      "command": "python",
+      "args": ["python/indesign_mcp_server.py"],
+      "env": {}
+    }
+  }
+}

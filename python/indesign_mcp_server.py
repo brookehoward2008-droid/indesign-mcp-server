@@ -27,9 +27,71 @@ import platform
 import sys
 import tempfile
 import time
+import warnings
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+
+# ---------------------------------------------------------------------------
+# OneDrive safety check
+# ---------------------------------------------------------------------------
+
+_ONEDRIVE_MARKERS = ("OneDrive", "onedrive", "ONEDRIVE")
+
+
+def _is_onedrive_path(p: Path) -> bool:
+    """Return True if the path is inside a OneDrive-synced folder."""
+    parts_str = str(p)
+    return any(marker in parts_str for marker in _ONEDRIVE_MARKERS)
+
+
+def _get_safe_output_dir() -> Path:
+    """Return a safe local directory for InDesign output, never on OneDrive.
+
+    Priority:
+      1. INDESIGN_OUTPUT_DIR env var (user override)
+      2. C:\\Users\\<user>\\InDesign-Automation-Output (Windows)
+      3. ~/InDesign-Automation-Output (other OS)
+    """
+    env_override = os.environ.get("INDESIGN_OUTPUT_DIR")
+    if env_override:
+        p = Path(env_override)
+        if _is_onedrive_path(p):
+            warnings.warn(
+                f"INDESIGN_OUTPUT_DIR is on OneDrive ({p}). "
+                "OneDrive sync can corrupt InDesign files. "
+                "Using fallback local path instead."
+            )
+        else:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+
+    if platform.system() == "Windows":
+        home = Path(os.environ.get("USERPROFILE", "C:\\Users\\Default"))
+    else:
+        home = Path.home()
+
+    output_dir = home / "InDesign-Automation-Output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def _check_server_location():
+    """Warn at startup if the server itself is running from OneDrive."""
+    server_path = Path(__file__).resolve()
+    if _is_onedrive_path(server_path):
+        msg = (
+            f"WARNING: This MCP server is running from a OneDrive path:\n"
+            f"  {server_path}\n"
+            f"OneDrive file sync can cause locking issues with InDesign COM.\n"
+            f"Recommended: Move this folder to a local path like:\n"
+            f"  C:\\Users\\{os.environ.get('USERNAME', 'user')}\\indesign-mcp-server\\"
+        )
+        print(msg, file=sys.stderr)
+
+
+# Run the check on import
+_check_server_location()
 
 # ---------------------------------------------------------------------------
 # Server setup
@@ -41,6 +103,7 @@ mcp = FastMCP(
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+SAFE_OUTPUT_DIR = _get_safe_output_dir()
 
 # ---------------------------------------------------------------------------
 # COM connection helpers (Windows only)
@@ -264,7 +327,7 @@ def export_pdf(output_path: str = "", preset: str = "[High Quality Print]") -> s
     """Export the active InDesign document to PDF.
 
     Args:
-        output_path: Where to save the PDF. If empty, saves next to the INDD file.
+        output_path: Where to save the PDF. If empty, saves to safe local directory (never OneDrive).
         preset: PDF export preset name (default: "[High Quality Print]").
 
     Returns:
@@ -275,11 +338,19 @@ def export_pdf(output_path: str = "", preset: str = "[High Quality Print]") -> s
         return "ERROR: No documents open in InDesign."
 
     doc = app.ActiveDocument
+
+    if output_path and _is_onedrive_path(Path(output_path)):
+        return (
+            f"ERROR: Output path is on OneDrive ({output_path}). "
+            f"OneDrive sync corrupts InDesign files. "
+            f"Use a local path instead, e.g.: {SAFE_OUTPUT_DIR / 'export.pdf'}"
+        )
+
     if not output_path:
-        if doc.Saved:
+        if doc.Saved and not _is_onedrive_path(Path(doc.FullName)):
             output_path = str(Path(doc.FullName).with_suffix(".pdf"))
         else:
-            output_path = str(Path(tempfile.gettempdir()) / "indesign-export.pdf")
+            output_path = str(SAFE_OUTPUT_DIR / f"{doc.Name.replace('.indd', '')}.pdf")
 
     script = f"""
     var doc = app.activeDocument;
@@ -444,10 +515,17 @@ def save_document(file_path: str = "") -> str:
 
     Args:
         file_path: Path to save as. If empty, saves to current location (must already be saved once).
+                   Will reject OneDrive paths to prevent sync corruption.
 
     Returns:
         Save confirmation or error.
     """
+    if file_path and _is_onedrive_path(Path(file_path)):
+        return (
+            f"ERROR: Cannot save to OneDrive path ({file_path}). "
+            f"OneDrive sync corrupts InDesign files. "
+            f"Use a local path instead, e.g.: {SAFE_OUTPUT_DIR / 'document.indd'}"
+        )
     if file_path:
         script = f"""
         var doc = app.activeDocument;

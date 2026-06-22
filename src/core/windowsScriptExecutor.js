@@ -1,14 +1,61 @@
 /**
  * Windows script execution via Python COM bridge (pywin32).
  * Replaces AppleScript on Windows for InDesign automation.
+ * Includes OneDrive detection to prevent saving to sync-prone paths.
  */
 import { execSync, execFileSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/**
+ * Check if a path is inside a OneDrive-synced folder.
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+export function isOneDrivePath(filePath) {
+    const lower = filePath.toLowerCase();
+    return lower.includes('onedrive') || lower.includes('one drive');
+}
+
+/**
+ * Get a safe local output directory (never OneDrive).
+ * Uses INDESIGN_OUTPUT_DIR env var if set, otherwise ~/InDesign-Automation-Output.
+ * @returns {string}
+ */
+export function getSafeOutputDir() {
+    const envOverride = process.env.INDESIGN_OUTPUT_DIR;
+    if (envOverride && !isOneDrivePath(envOverride)) {
+        if (!fs.existsSync(envOverride)) {
+            fs.mkdirSync(envOverride, { recursive: true });
+        }
+        return envOverride;
+    }
+
+    const home = os.homedir();
+    const outputDir = path.join(home, 'InDesign-Automation-Output');
+    if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+    }
+    return outputDir;
+}
+
+/**
+ * Validate that a target path is not on OneDrive. Returns error string or null.
+ * @param {string} targetPath
+ * @returns {string|null}
+ */
+export function validateNotOneDrive(targetPath) {
+    if (isOneDrivePath(targetPath)) {
+        const safe = getSafeOutputDir();
+        return `ERROR: Path is on OneDrive (${targetPath}). OneDrive sync can corrupt InDesign files. Use a local path instead, e.g.: ${safe}`;
+    }
+    return null;
+}
 
 export class WindowsScriptExecutor {
     /**

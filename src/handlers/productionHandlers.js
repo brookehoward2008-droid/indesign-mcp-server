@@ -8,6 +8,7 @@ import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ScriptExecutor } from '../core/scriptExecutor.js';
+import { isOneDrivePath, getSafeOutputDir, validateNotOneDrive } from '../core/windowsScriptExecutor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
